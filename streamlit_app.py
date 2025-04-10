@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import sys
 import logging
 import re
 # numpy is used indirectly by getdist and matplotlib
@@ -16,6 +17,20 @@ from getdist.chain_grid import ChainDirGrid, get_chain_root_files
 # 2. The parent directory of this file
 # 3. The grandparent directory of this file (repository root)
 # If found, it will be automatically selected when the app starts
+#
+# The app also accepts a command line argument to specify a default directory:
+#
+# When running with streamlit directly:
+#   streamlit run streamlit_app.py -- --dir=/path/to/chains
+#   streamlit run streamlit_app.py -- --directory=/path/to/chains
+#
+# When running the module with python -m:
+#   python -m streamlit run getdist/gui/streamlit_app.py --dir=/path/to/chains
+#   python -m streamlit run getdist/gui/streamlit_app.py --directory=/path/to/chains
+#
+# Both formats with and without the equals sign are supported:
+#   --dir=/path/to/chains
+#   --dir /path/to/chains
 
 # Set up logging
 logging.basicConfig(
@@ -27,6 +42,62 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+def parse_command_line_args():
+    """Parse command line arguments to get a default directory
+
+    Returns:
+        str or None: Path to the default directory if specified, None otherwise
+    """
+    # Log the command line arguments for debugging
+    logger.info(f"Command line arguments: {sys.argv}")
+
+    # First try to find arguments after -- separator (for streamlit run -- --dir=path syntax)
+    try:
+        separator_index = sys.argv.index('--')
+        # Get arguments after --
+        args = sys.argv[separator_index + 1:]
+        logger.info(f"Arguments after --: {args}")
+
+        # Look for --dir or --directory argument
+        for i, arg in enumerate(args):
+            if arg.startswith('--dir=') or arg.startswith('--directory='):
+                # Extract the directory path
+                parts = arg.split('=', 1)
+                if len(parts) == 2 and parts[1]:
+                    dir_path = os.path.abspath(parts[1])
+                    logger.info(f"Found directory argument: {dir_path}")
+                    return dir_path
+            elif (arg == '--dir' or arg == '--directory') and i + 1 < len(args):
+                # Directory is the next argument
+                dir_path = os.path.abspath(args[i + 1])
+                logger.info(f"Found directory argument: {dir_path}")
+                return dir_path
+    except (ValueError, IndexError) as e:
+        # -- not found or other parsing error
+        logger.info(f"No -- separator found, checking direct arguments: {e}")
+
+    # If no -- separator or no arguments found after it, check all arguments
+    # This handles the case when streamlit passes arguments directly to the script
+    args = sys.argv
+    for i, arg in enumerate(args):
+        if arg.startswith('--dir=') or arg.startswith('--directory='):
+            # Extract the directory path
+            parts = arg.split('=', 1)
+            if len(parts) == 2 and parts[1]:
+                dir_path = os.path.abspath(parts[1])
+                logger.info(f"Found directory argument: {dir_path}")
+                return dir_path
+        elif (arg == '--dir' or arg == '--directory') and i + 1 < len(args):
+            # Directory is the next argument
+            dir_path = os.path.abspath(args[i + 1])
+            logger.info(f"Found directory argument: {dir_path}")
+            return dir_path
+
+    logger.info("No directory specified in command line arguments")
+    return None
+
 
 # Set page configuration
 st.set_page_config(
@@ -80,28 +151,31 @@ st.session_state.setdefault('display_dir_path', None)
 # Initialize selected_directory with None first
 st.session_state.setdefault('selected_directory', None)
 
-# Check for default_chains folder in multiple locations if app is starting fresh
+# Check for command line arguments or default_chains folder if app is starting fresh
 if 'app_initialized' not in st.session_state:
-    # Look for default_chains in current directory, parent directory, and grandparent directory
-    file_dir = os.path.dirname(__file__)
-    possible_locations = [
-        file_dir,                                # Current directory
-        os.path.abspath(os.path.join(file_dir, '..')),     # Parent directory
-        os.path.abspath(os.path.join(file_dir, '..', '..'))  # Grandparent directory
-    ]
+    # First check for command line arguments
+    cmd_line_dir = parse_command_line_args()
+    if cmd_line_dir and os.path.exists(cmd_line_dir) and os.path.isdir(cmd_line_dir):
+        logger.info(f"Using directory from command line argument: {cmd_line_dir}")
+        st.session_state.selected_directory = cmd_line_dir
+    else:
+        # If no command line argument, look for default_chains in current directory, parent directory, and grandparent directory
+        file_dir = os.path.dirname(__file__)
+        possible_locations = [
+            '',
+            file_dir,                                # Current directory
+            os.path.abspath(os.path.join(file_dir, '..')),     # Parent directory
+            os.path.abspath(os.path.join(file_dir, '..', '..'))  # Grandparent directory
+        ]
 
-    # Try to find default_chains in any of the possible locations
-    default_chains_dir = None
-    for location in possible_locations:
-        test_path = os.path.join(location, 'default_chains')
-        if os.path.exists(test_path) and os.path.isdir(test_path):
-            default_chains_dir = test_path
-            logger.info(f"Found default_chains directory at: {default_chains_dir}")
-            break
-
-    # If default_chains exists, set it as the selected directory
-    if default_chains_dir:
-        st.session_state.selected_directory = default_chains_dir
+        # Try to find default_chains in any of the possible locations
+        for location in possible_locations:
+            test_path = os.path.join(location, 'default_chains')
+            if os.path.exists(test_path) and os.path.isdir(test_path):
+                default_chains_dir = test_path
+                logger.info(f"Found default_chains directory at: {default_chains_dir}")
+                st.session_state.selected_directory = default_chains_dir
+                break           
 
     # Mark that the app has been initialized
     st.session_state.app_initialized = True
