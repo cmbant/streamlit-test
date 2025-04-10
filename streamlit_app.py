@@ -161,6 +161,7 @@ if 'app_initialized' not in st.session_state:
     else:
         # If no command line argument, look for default_chains in current directory, parent directory, and grandparent directory
         file_dir = os.path.dirname(__file__)
+        logger.info(f"File directory: {file_dir}")
         possible_locations = [
             '',
             file_dir,                                # Current directory
@@ -175,7 +176,7 @@ if 'app_initialized' not in st.session_state:
                 default_chains_dir = test_path
                 logger.info(f"Found default_chains directory at: {default_chains_dir}")
                 st.session_state.selected_directory = default_chains_dir
-                break           
+                break
 
     # Mark that the app has been initialized
     st.session_state.app_initialized = True
@@ -203,6 +204,7 @@ st.session_state.setdefault('show_analysis_settings', False)
 st.session_state.setdefault('show_plot_options', False)
 st.session_state.setdefault('show_config_settings', False)
 st.session_state.setdefault('show_about', False)
+st.session_state.setdefault('show_debug_log', False)
 
 # GetDist Settings Initialization
 if 'default_settings' not in st.session_state:
@@ -1376,7 +1378,8 @@ def main():
         all_dialogs = [
             'show_marge_stats', 'show_like_stats', 'show_converge_stats',
             'show_pca', 'show_param_table', 'show_analysis_settings',
-            'show_plot_options', 'show_config_settings', 'show_about'
+            'show_plot_options', 'show_config_settings', 'show_about',
+            'show_debug_log'
         ]
 
         # Close all dialogs
@@ -1469,6 +1472,10 @@ def main():
             st.markdown("[Planck Legacy Archive](https://pla.esac.esa.int/)")
 
             st.divider()
+
+            # Debug Log button
+            if st.button("View Debug Log", key="debug_log_button", use_container_width=True):
+                toggle_dialog('show_debug_log')
 
             # About button
             if st.button("About", key="about_button", use_container_width=True):
@@ -2170,6 +2177,46 @@ def main():
             st.write("[GetDist on GitHub](https://github.com/cmbant/getdist)")
 
             if st.button("Close", key="close_about"):
+                toggle_dialog(None)  # Close all dialogs
+                st.rerun()
+
+    if st.session_state.show_debug_log:
+        with st.expander("Debug Log", expanded=True):
+            # Get the log file path
+            log_file_path = os.path.join(os.path.dirname(__file__), 'getdist_streamlit.log')
+
+            if os.path.exists(log_file_path):
+                try:
+                    # Read the log file
+                    with open(log_file_path, 'r') as f:
+                        log_content = f.read()
+
+                    # Add refresh button and log file path info
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.info(f"Log file: {log_file_path}")
+                    with col2:
+                        if st.button("Refresh", key="refresh_log"):
+                            st.rerun()
+
+                    # Show the log content in a text area with scrolling
+                    st.text_area("Log Content", log_content, height=400, key="log_content")
+
+                    # Add download button for the log file
+                    if st.download_button(
+                        label="Download Log File",
+                        data=log_content,
+                        file_name="getdist_streamlit.log",
+                        mime="text/plain",
+                        key="download_log"
+                    ):
+                        pass
+                except Exception as e:
+                    st.error(f"Error reading log file: {str(e)}")
+            else:
+                st.warning(f"Log file not found at: {log_file_path}")
+
+            if st.button("Close", key="close_debug_log"):
                 toggle_dialog(None)  # Close all dialogs
                 st.rerun()
 
