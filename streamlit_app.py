@@ -50,9 +50,9 @@ def track_session_reload():
     """Track why the session is reloading"""
     if 'reload_count' not in st.session_state:
         st.session_state.reload_count = 0
-    
+
     st.session_state.reload_count += 1
-    
+
     logger.info(f"""
 Session reload #{st.session_state.reload_count}
 Time: {time.strftime('%Y-%m-%d %H:%M:%S')}
@@ -1279,8 +1279,7 @@ def generate_plot():
             logging.exception("Error generating triangle plot")
             st.error(f"Error generating triangle plot: {str(e)}")
 
-    # Add show command to script - match original format
-    # Original doesn't add plt.show() in the script preview
+    script = "\n".join(script_lines)
 
     # Generate plot image in memory if figure is available
     if (fig:=plotter.fig) is not None:
@@ -1295,9 +1294,7 @@ def generate_plot():
             # Get the image bytes
             buf.seek(0)
             image_bytes = buf.getvalue()
-            # Create script
-            script = "\n".join(script_lines)
-
+    
             return image_bytes, script
         except Exception as e:
             logging.exception("Error saving plot to memory")
@@ -1305,7 +1302,6 @@ def generate_plot():
     else:
         logging.warning("No figure was generated")
 
-    script = "\n".join(script_lines)
     logging.info("Returning script only (no image)")
     return None, script
 
@@ -2226,7 +2222,7 @@ def main():
     # Create a sidebar for controls
     with st.sidebar:
         # Directory selection
-        st.subheader("1. Select Chain Directory")
+        st.subheader("Chain Directory")
 
         # Recent directories and browser path are initialized at the top of the script
 
@@ -2396,8 +2392,6 @@ def main():
 
         # Chain selection
         if st.session_state.chain_dir:
-            st.subheader("2. Select Chains")
-
             # If we have a batch with base_dir_names
             if st.session_state.batch and hasattr(st.session_state.batch, 'base_dir_names') and st.session_state.batch.base_dir_names:
                 # Parameter tag selection (base directories)
@@ -2595,8 +2589,6 @@ def main():
 
             # Parameter selection
             if st.session_state.selected_roots and st.session_state.param_names:
-                st.subheader("3. Select Parameters")
-
                 # Get parameter list
                 param_list = []
                 try:
@@ -2622,43 +2614,55 @@ def main():
                     st.error(f"Error getting parameter list: {str(e)}")
                     logging.exception("Parameter list error")
 
-                # Create a layout exactly like the original getdist GUI
-                st.subheader("Parameter Selection")
+                # Parameter selection section
 
                 # Create a container with a border for parameter selection
                 with st.container(border=True):
-                    # Create three columns for parameter list, X/Y checkboxes
-                    col1, col2, col3 = st.columns([3, 1, 1])
-
-                    # Headers
-                    with col1:
-                        st.write("**Parameter**")
-                    with col2:
-                        st.write("**X**")
-                    with col3:
-                        st.write("**Y**")
-
+                    # Create a simple table layout
                     # Initialize parameter selections
                     x_selections = {}
                     y_selections = {}
+
+                    # Create a simple table with three columns
+                    col1, col2, col3 = st.columns([8, 1, 1])
+
+                    # Add headers
+                    with col1:
+                        st.write("Parameter")
+                    with col2:
+                        st.write("X")
+                    with col3:
+                        st.write("Y")
+
+                    # Add a separator line
+                    st.markdown("<hr style='margin: 0; border-color: rgba(250, 250, 250, 0.2);'>", unsafe_allow_html=True)
 
                     # Display parameters in original order with X/Y checkboxes
                     for param in param_list:
                         is_x_selected = param in st.session_state.x_params
                         is_y_selected = param in st.session_state.y_params
 
-                        with col1:
-                            st.write(param)
-                        with col2:
+                        # Create a row with three columns for each parameter
+                        row_cols = st.columns([8, 1, 1])
+
+                        with row_cols[0]:
+                            # Use markdown instead of write for more compact display
+                            st.markdown(f"<div style='padding: 0; margin: 0;'>{param}</div>", unsafe_allow_html=True)
+                        with row_cols[1]:
                             x_selections[param] = st.checkbox(
                                 "X", value=is_x_selected, key=f"x_{param}",
                                 label_visibility="collapsed"
                             )
-                        with col3:
+                        with row_cols[2]:
                             y_selections[param] = st.checkbox(
                                 "Y", value=is_y_selected, key=f"y_{param}",
                                 label_visibility="collapsed"
                             )
+
+                        # Add a very thin separator between rows to guide the eye
+                        st.markdown("<hr style='margin: 0; padding: 0; border-color: rgba(250, 250, 250, 0.1); border-width: 1px;'>", unsafe_allow_html=True)
+
+                    # No need to extract selections - they're already in x_selections and y_selections
 
                 # Create lists of selected parameters
                 x_params = [param for param in param_list if x_selections.get(param, False)]
@@ -2691,7 +2695,6 @@ def main():
 
             # Plot type selection
             if st.session_state.selected_roots and st.session_state.x_params:
-                st.subheader("4. Select Plot Type")
 
                 # Use a simple radio button for plot type selection
                 plot_type = st.radio(
@@ -2717,6 +2720,7 @@ def main():
                                 logging.info("Setting current_script in session state")
                                 st.session_state.current_script = script
                             st.success("Plot generated!")
+                            st.rerun()
 
     # Main content area - use a two-column layout
     if st.session_state.chain_dir:
@@ -2729,10 +2733,6 @@ def main():
 
         # Plot Settings in the settings column
         with settings_col:
-            st.header("Plot Settings")
-
-            # Common settings
-            st.subheader("General Settings")
 
             # Add Ignore rows option (same as in Analysis Settings)
             current_ignore_rows = st.session_state.current_settings.string('ignore_rows')
@@ -2928,8 +2928,8 @@ def main():
                     # Update the current plot and script
                     if image_bytes:
                         st.session_state.current_plot = image_bytes
-                    if script:
-                        st.session_state.current_script = script
+                        if script:
+                            st.session_state.current_script = script
 
                     st.success("Plot updated with new settings!")
 
