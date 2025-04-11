@@ -3,8 +3,8 @@ import os
 import sys
 import logging
 import re
-# numpy is used indirectly by getdist and matplotlib
 import copy
+import time
 import matplotlib.pyplot as plt
 import json
 from io import BytesIO
@@ -44,22 +44,32 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+import traceback
+
+def track_session_reload():
+    """Track why the session is reloading"""
+    if 'reload_count' not in st.session_state:
+        st.session_state.reload_count = 0
+    
+    st.session_state.reload_count += 1
+    
+    logger.info(f"""
+Session reload #{st.session_state.reload_count}
+Time: {time.strftime('%Y-%m-%d %H:%M:%S')}
+Stack trace:
+{traceback.format_stack()}
+    """.strip())
+
+# Add near start of main()
+track_session_reload()
+
 def parse_command_line_args():
-    """Parse command line arguments to get a default directory
-
-    Returns:
-        str or None: Path to the default directory if specified, None otherwise
-    """
-    # Log the command line arguments for debugging
-    logger.info(f"Command line arguments: {sys.argv}")
-
+    dir_path = None
     # First try to find arguments after -- separator (for streamlit run -- --dir=path syntax)
     try:
         separator_index = sys.argv.index('--')
         # Get arguments after --
         args = sys.argv[separator_index + 1:]
-        logger.info(f"Arguments after --: {args}")
-
         # Look for --dir or --directory argument
         for i, arg in enumerate(args):
             if arg.startswith('--dir=') or arg.startswith('--directory='):
@@ -67,36 +77,29 @@ def parse_command_line_args():
                 parts = arg.split('=', 1)
                 if len(parts) == 2 and parts[1]:
                     dir_path = os.path.abspath(parts[1])
-                    logger.info(f"Found directory argument: {dir_path}")
-                    return dir_path
+                    break
             elif (arg == '--dir' or arg == '--directory') and i + 1 < len(args):
                 # Directory is the next argument
                 dir_path = os.path.abspath(args[i + 1])
-                logger.info(f"Found directory argument: {dir_path}")
-                return dir_path
+                break
     except (ValueError, IndexError) as e:
         # -- not found or other parsing error
-        logger.info(f"No -- separator found, checking direct arguments: {e}")
-
-    # If no -- separator or no arguments found after it, check all arguments
-    # This handles the case when streamlit passes arguments directly to the script
-    args = sys.argv
-    for i, arg in enumerate(args):
-        if arg.startswith('--dir=') or arg.startswith('--directory='):
-            # Extract the directory path
-            parts = arg.split('=', 1)
-            if len(parts) == 2 and parts[1]:
-                dir_path = os.path.abspath(parts[1])
-                logger.info(f"Found directory argument: {dir_path}")
-                return dir_path
-        elif (arg == '--dir' or arg == '--directory') and i + 1 < len(args):
-            # Directory is the next argument
-            dir_path = os.path.abspath(args[i + 1])
-            logger.info(f"Found directory argument: {dir_path}")
-            return dir_path
-
-    logger.info("No directory specified in command line arguments")
-    return None
+        # This handles the case when streamlit passes arguments directly to the script
+        args = sys.argv
+        for i, arg in enumerate(args):
+            if arg.startswith('--dir=') or arg.startswith('--directory='):
+                # Extract the directory path
+                parts = arg.split('=', 1)
+                if len(parts) == 2 and parts[1]:
+                    dir_path = os.path.abspath(parts[1])
+                    break
+            elif (arg == '--dir' or arg == '--directory') and i + 1 < len(args):
+                # Directory is the next argument
+                dir_path = os.path.abspath(args[i + 1])
+                break
+    if dir_path:
+        logger.info(f"Found directory argument: {dir_path}")
+    return dir_path
 
 
 # Set page configuration
@@ -157,7 +160,7 @@ if 'app_initialized' not in st.session_state:
     cmd_line_dir = parse_command_line_args()
     if cmd_line_dir and os.path.exists(cmd_line_dir) and os.path.isdir(cmd_line_dir):
         logger.info(f"Using directory from command line argument: {cmd_line_dir}")
-        st.session_state.selected_directory = cmd_line_dir
+        st.session_state.selected_directory = os.path.abspath(cmd_line_dir)
     else:
         # If no command line argument, look for default_chains in current directory, parent directory, and grandparent directory
         file_dir = os.path.dirname(__file__)
@@ -175,7 +178,7 @@ if 'app_initialized' not in st.session_state:
             if os.path.exists(test_path) and os.path.isdir(test_path):
                 default_chains_dir = test_path
                 logger.info(f"Found default_chains directory at: {default_chains_dir}")
-                st.session_state.selected_directory = default_chains_dir
+                st.session_state.selected_directory = os.path.abspath(default_chains_dir)
                 break
 
     # Mark that the app has been initialized
@@ -2325,10 +2328,6 @@ def main():
                             st.rerun()
 
         # File browser dialog is initialized at the top of the script
-
-        # File browser implementation
-        # We need to use a different approach to avoid modifying widget values after they're created
-
         # Check if a directory was selected in the previous run
         if st.session_state.selected_directory:
             # Use the selected directory
